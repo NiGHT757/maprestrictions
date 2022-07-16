@@ -1,185 +1,215 @@
+#pragma newdecls required
+#pragma semicolon 1
+
 #include <sourcemod>
-#include <colors>
 #include <sdktools>
 
-#define PLUGIN_VERSION "1.2.2"
-#pragma newdecls required
+#define MAX_MAP_NAME_LENGTH 64
 
-ArrayList props;
+enum struct Messages
+{
+	int lessthan;
+	int morethan;
+	char text[64];
+}
 
-Handle g_AutoReload;
-Handle g_Message;
+enum struct Props
+{
+	int lessthan;
+	int morethan;
+	float origin[3];
+	float angles[3];
+}
+
+Handle g_hTimer;
+
+ArrayList g_hProps;
+ArrayList g_hMessages;
+ArrayList g_hSpawnedProps;
+
+ConVar mp_freezetime;
+float g_fFreezetime;
+
+char g_sModel[PLATFORM_MAX_PATH];
 
 public Plugin myinfo =
 {
-	name 			= "AbNeR Map Restrictions",
-	author		    = "abnerfs",
+	name 			= "[FIX] AbNeR Map Restrictions",
+	author		    = "abnerfs, NiGHT",
 	description 	= "Area restrictions in maps.",
-	version 		= PLUGIN_VERSION,
-	url 			= "https://github.com/abnerfs/maprestrictions"
+	version 		= "2.1",
+	url 			= "https://github.com/NiGHT757"
 }
 
 public void OnPluginStart()
 {
-	AutoExecConfig(true, "abner_maprestrictions");
+	mp_freezetime	 = FindConVar("mp_freezetime");
+	mp_freezetime.AddChangeHook(OnSettingsChanged);
+
+	g_hProps = new ArrayList(sizeof(Props));
+	g_hMessages = new ArrayList(sizeof(Messages));
+	g_hSpawnedProps = new ArrayList(ByteCountToCells(8));
+
+	HookEvent("round_start", EventRoundStart, EventHookMode_PostNoCopy);
+	RegAdminCmd("sm_props_refresh", cmd_reloadprops, ADMFLAG_ROOT);
+	RegAdminCmd("sm_props_reloadconfig", cmd_reloadconfig, ADMFLAG_RCON);
+}
+
+public void OnConfigsExecuted()
+{
+	g_fFreezetime = mp_freezetime.FloatValue;
+}
+
+public void OnSettingsChanged(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	g_fFreezetime = mp_freezetime.FloatValue;
+}
+
+public void OnMapStart()
+{
+	g_hTimer = null;
+	LoadConfig();
+}
+
+public void EventRoundStart(Event event, const char[] name, bool db)
+{
+	delete g_hTimer;
+	g_hTimer = CreateTimer(g_fFreezetime, timer_reloadprops, _, TIMER_FLAG_NO_MAPCHANGE);
+}
+
+public Action cmd_reloadprops(int client, int args){
+	ReplyToCommand(client, "Props reloaded successfully");
+	ClearProps();
+	CreateProps();
 	
-	g_AutoReload  	 = CreateConVar("abner_maprestrictions_autorefresh", "1", "Refresh props when player joins a team our disconnect.");
-	g_Message		 = CreateConVar("abner_maprestrictions_msgs", "1", "Show message when round starts");
-		
-	props = new ArrayList();
-	HookEvent("round_start", EventRoundStart);
-	HookEvent("player_team", PlayerJoinTeam);
-	HookEvent("player_disconnect", PlayerJoinTeam);
-	RegAdminCmd("refreshprops", CmdReloadProps, ADMFLAG_ROOT);
-	CreateConVar("abner_maprestrictions_version", PLUGIN_VERSION, "Plugin version", FCVAR_NOTIFY|FCVAR_REPLICATED);
+	return Plugin_Handled;
 }
 
-public Action PlayerJoinTeam(Handle ev, char[] name, bool dbroad){
-	if(GetConVarInt(g_AutoReload) == 1)
-		CreateTimer(0.1, ReloadPropsTime);
+public Action cmd_reloadconfig(int client, int args){
+	ReplyToCommand(client, "Config reloaded successfully");
+	LoadConfig();
+
+	return Plugin_Handled;
 }
 
-public Action CmdReloadProps(int client, int args){
-	ReloadProps();
-}
+public Action timer_reloadprops(Handle timer)
+{
+	ClearProps();
+	CreateProps();
 
-public Action ReloadPropsTime(Handle time){
-	ReloadProps();
-}
-
-
-
-public Action EventRoundStart(Handle ev, char[] name, bool db){
-	ReloadProps();
-	
-	if(GetConVarInt(g_Message) != 1)
-		return Plugin_Continue;
-	PrintMessage();
+	g_hTimer = null;
 	return Plugin_Continue;
 }
 
-void ReloadProps(){
-	DeleteAllProps();
-	CreateProps();
-}
-
-
-void DeleteAllProps(){
-
-	for(int i = 0;i < props.Length;i++){
-		int Ent = props.Get(i);
-		if(IsValidEntity(Ent))
-			AcceptEntityInput(props.Get(i), "kill");
-	}
-	props.Clear();
-}
-
-stock void BuildDataPath(char[] path, char[] mapname) {
-	char enginePath[100];
-	EngineVersion engine = GetEngineVersion();
-	switch(engine) {
-		case Engine_CSGO: {
-			Format(enginePath, sizeof(enginePath), "csgo");
-		}
-		case Engine_CSS: {
-			Format(enginePath, sizeof(enginePath), "css");
-		}
-		default: {
-			Format(enginePath, sizeof(enginePath), "other");
-		}
-	}
-	BuildPath(Path_SM, path, PLATFORM_MAX_PATH, "data/abner_maprestrictions/%s/%s.ini", enginePath, mapname);
-}
-
-void PrintMessage(){
-	char mapname[100];
-	GetCurrentMap(mapname, sizeof(mapname))
-	int PlayerCount = GetTeamClientCount(3) + GetTeamClientCount(2);
-	KeyValues kv = new KeyValues("Messages");
-
-	char path[PLATFORM_MAX_PATH];
-	BuildDataPath(path, mapname);
-
-	if(!FileToKeyValues(kv, path)) return;
-	if(kv.JumpToKey("Messages") && kv.GotoFirstSubKey()){
-		do
-		{
-			char Message[500];
-			int MoreThan = kv.GetNum("morethan", 0);
-			int LessThan = kv.GetNum("lessthan", 0);
-			kv.GetString("message", Message, sizeof(Message));
-			if(!StrEqual(Message, "") && PlayerCount > MoreThan && (LessThan == 0 || PlayerCount < LessThan))
-			{
-				CPrintToChatAll("{green}[AbNeR Map Restrictions]{default} {lightgreen}%d{default}x{lightgreen}%d {default}- {green}%s", GetTeamClientCount(2), GetTeamClientCount(3), Message);
-			}
-		}while(kv.GotoNextKey());	
-	}
-	else
-	{
-		SetFailState("[AbNeR MapRestrictions] - Corrupted %s.ini file", mapname);
-	}
-	delete kv;
-}
-
-void CreateProps(){
-	char mapname[100];
-	GetCurrentMap(mapname, sizeof(mapname))
-	props.Clear();
-	int PlayerCount = GetTeamClientCount(3) + GetTeamClientCount(2);
-	KeyValues kv = new KeyValues("Positions");
-
-	char path[PLATFORM_MAX_PATH];
-	BuildDataPath(path, mapname);
+void CreateProps()
+{
+	int iPlayerCount = GetTeamClientCount(3) + GetTeamClientCount(2);
 	
-	if(!FileToKeyValues(kv, path)) return;
+	Messages data;
+	char sMessage[64];
+	for(int i = 0; i < g_hMessages.Length; i++)
+	{
+		g_hMessages.GetArray(i, data, sizeof(data));
 		
-	if(kv.JumpToKey("Positions") && kv.GotoFirstSubKey())
+		if(iPlayerCount > data.morethan && (data.lessthan == 0 || iPlayerCount < data.lessthan))
+			strcopy(sMessage, sizeof(sMessage), data.text);
+	}
+
+	if(sMessage[0])
+		PrintToChatAll("[\x02USP\x01] Players: \x0F%d\x01 x \x0B%d\x01 - \x04%s", GetTeamClientCount(2), GetTeamClientCount(3), sMessage);
+	
+	int iEnt;
+	Props props; 
+	for(int i = 0; i < g_hProps.Length; i++)
 	{
-		do
+		g_hProps.GetArray(i, props, sizeof(props));
+		
+		if(iPlayerCount > props.morethan && (props.lessthan == 0 || iPlayerCount < props.lessthan))
 		{
-			char model[PLATFORM_MAX_PATH];
-			kv.GetString("model", model, sizeof(model));
-			int MoreThan = kv.GetNum("morethan", 0);
-			int LessThan = kv.GetNum("lessthan", 0);
+			iEnt = CreateEntityByName("prop_physics_override"); 
+					
+			DispatchKeyValue(iEnt, "physdamagescale", "0.0");
+			DispatchKeyValue(iEnt, "model", g_sModel);
 
+			DispatchSpawn(iEnt);
+			SetEntityMoveType(iEnt, MOVETYPE_PUSH);
 			
-			if(kv.GotoFirstSubKey())
-			{
-				do
-				{
-					float origin[3];
-					float angles[3];
-					kv.GetVector("origin", origin);
-					kv.GetVector("angles", angles);
-					
-					if(PlayerCount > MoreThan && (LessThan == 0 || PlayerCount < LessThan))
-					{
-						if(PrecacheModel(model,true) == 0)
-							SetFailState("[AbNeR MapRestrictions] - Error precaching model '%s'", model);
-						
-						int Ent = CreateEntityByName("prop_physics_override"); 
-					
-						DispatchKeyValue(Ent, "physdamagescale", "0.0");
-						DispatchKeyValue(Ent, "model", model);
+			TeleportEntity(iEnt, props.origin, props.angles, NULL_VECTOR);
+			g_hSpawnedProps.Push(EntIndexToEntRef(iEnt));
+		}
+	}
+}
 
-						DispatchSpawn(Ent);
-						SetEntityMoveType(Ent, MOVETYPE_PUSH);
-						
-						TeleportEntity(Ent, origin, angles, NULL_VECTOR);
-						props.Push(Ent);
-					}
-				}while(kv.GotoNextKey());
-				kv.GoBack();
-			}
-			else
-			{
-				SetFailState("[AbNeR MapRestrictions] - Corrupted %s.ini file", mapname);
-			}
-		}while(kv.GotoNextKey());
-	}
-	else
+void ClearProps()
+{
+	int iEnt;
+	for(int i = 0; i < g_hSpawnedProps.Length; i++)
 	{
-		SetFailState("[AbNeR MapRestrictions] - Corrupted %s.ini file", mapname);
+		iEnt = EntRefToEntIndex(g_hSpawnedProps.Get(i));
+		if (iEnt != INVALID_ENT_REFERENCE && IsValidEntity(iEnt))
+		{
+			RemoveEntity(iEnt);
+		}
 	}
+	g_hSpawnedProps.Clear();
+}
+
+void LoadConfig()
+{
+	g_hMessages.Clear();
+	g_hProps.Clear();
+
+	char sPath[PLATFORM_MAX_PATH];
+	char sMap[MAX_MAP_NAME_LENGTH];
+
+	GetCurrentMap(sMap, sizeof(sMap));
+	BuildPath(Path_SM, sPath, sizeof(sPath), "data/abner_maprestrictions/%s.ini", sMap);
+
+	if(!FileExists(sPath))
+		SetFailState("File %s doesn't exist", sPath);
+	
+	KeyValues kv = new KeyValues(sMap);
+
+	if (!kv.ImportFromFile(sPath))
+	{
+		SetFailState("Couldn't parse file %s", sPath);
+	}
+
+	kv.GetString("model", g_sModel, sizeof(g_sModel), "models/props_wasteland/exterior_fence001b.mdl");
+	if(PrecacheModel(g_sModel, true) == 0)
+		SetFailState("[MapRestrictions] - Error precaching model '%s'", g_sModel);
+	
+	if(kv.JumpToKey("messages") && kv.GotoFirstSubKey())
+	{
+		Messages data;
+		do{
+			data.morethan = kv.GetNum("morethan");
+			data.lessthan = kv.GetNum("lessthan");
+
+			kv.GetString("message", data.text, sizeof(data.text));
+
+			g_hMessages.PushArray(data);
+			//PrintToServer("morethan %d message %s", data.morethan, data.text);
+		}
+		while(kv.GotoNextKey());
+		kv.Rewind();
+	}
+	if(kv.GotoFirstSubKey())
+	{
+		kv.GotoNextKey();
+		Props props;
+		do{
+			props.lessthan = kv.GetNum("lessthan");
+			props.morethan = kv.GetNum("morethan");
+
+			kv.GetVector("origin", props.origin);
+			kv.GetVector("angles", props.angles);
+
+			g_hProps.PushArray(props, sizeof(props));
+			//PrintToServer("origin %.2f %.2f %.2f angles %.2f %.2f %.2f, lessthan %d", props.origin[0], props.origin[1], props.origin[2], props.angles[0], props.angles[1], props.angles[2], props.lessthan);
+		}
+		while(kv.GotoNextKey());
+	}
+
 	delete kv;
 }

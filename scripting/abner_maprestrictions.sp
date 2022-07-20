@@ -37,8 +37,8 @@ public Plugin myinfo =
 	name 			= "[FIX] AbNeR Map Restrictions",
 	author		    = "abnerfs, NiGHT",
 	description 	= "Area restrictions in maps.",
-	version 		= "2.1",
-	url 			= "https://github.com/NiGHT757"
+	version 		= "2.2",
+	url 			= "https://github.com/NiGHT757/maprestrictions"
 }
 
 public void OnPluginStart()
@@ -78,7 +78,7 @@ public void EventRoundStart(Event event, const char[] name, bool db)
 }
 
 public Action cmd_reloadprops(int client, int args){
-	ReplyToCommand(client, "Props reloaded successfully");
+	ReplyToCommand(client, "\x02»» \x01Props reloaded successfully");
 	ClearProps();
 	CreateProps();
 	
@@ -86,7 +86,7 @@ public Action cmd_reloadprops(int client, int args){
 }
 
 public Action cmd_reloadconfig(int client, int args){
-	ReplyToCommand(client, "Config reloaded successfully");
+	ReplyToCommand(client, " \x02»» \x01Config reloaded successfully");
 	LoadConfig();
 
 	return Plugin_Handled;
@@ -103,6 +103,9 @@ public Action timer_reloadprops(Handle timer)
 
 void CreateProps()
 {
+	if(!g_hProps.Length)
+		return;
+	
 	int iPlayerCount = GetTeamClientCount(3) + GetTeamClientCount(2);
 	
 	Messages data;
@@ -116,7 +119,7 @@ void CreateProps()
 	}
 
 	if(sMessage[0])
-		PrintToChatAll("[\x02USP\x01] Players: \x0F%d\x01 x \x0B%d\x01 - \x04%s", GetTeamClientCount(2), GetTeamClientCount(3), sMessage);
+		PrintToChatAll(" \x02»» \x01Players: \x0F%d\x01 x \x0B%d\x01 - \x04%s", GetTeamClientCount(2), GetTeamClientCount(3), sMessage);
 	
 	int iEnt;
 	Props props; 
@@ -166,13 +169,13 @@ void LoadConfig()
 	BuildPath(Path_SM, sPath, sizeof(sPath), "data/abner_maprestrictions/%s.ini", sMap);
 
 	if(!FileExists(sPath))
-		SetFailState("File %s doesn't exist", sPath);
+		return;
 	
 	KeyValues kv = new KeyValues(sMap);
 
 	if (!kv.ImportFromFile(sPath))
 	{
-		SetFailState("Couldn't parse file %s", sPath);
+		return;
 	}
 
 	kv.GetString("model", g_sModel, sizeof(g_sModel), "models/props_wasteland/exterior_fence001b.mdl");
@@ -189,7 +192,6 @@ void LoadConfig()
 			kv.GetString("message", data.text, sizeof(data.text));
 
 			g_hMessages.PushArray(data);
-			//PrintToServer("morethan %d message %s", data.morethan, data.text);
 		}
 		while(kv.GotoNextKey());
 		kv.Rewind();
@@ -206,7 +208,6 @@ void LoadConfig()
 			kv.GetVector("angles", props.angles);
 
 			g_hProps.PushArray(props, sizeof(props));
-			//PrintToServer("origin %.2f %.2f %.2f angles %.2f %.2f %.2f, lessthan %d", props.origin[0], props.origin[1], props.origin[2], props.angles[0], props.angles[1], props.angles[2], props.lessthan);
 		}
 		while(kv.GotoNextKey());
 	}

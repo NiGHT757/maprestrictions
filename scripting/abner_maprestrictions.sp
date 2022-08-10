@@ -32,6 +32,9 @@ float g_fFreezetime;
 
 char g_sModel[PLATFORM_MAX_PATH];
 
+int g_iPropsLength;
+int g_iMessagesLength;
+
 public Plugin myinfo =
 {
 	name 			= "[FIX] AbNeR Map Restrictions",
@@ -103,14 +106,14 @@ public Action timer_reloadprops(Handle timer)
 
 void CreateProps()
 {
-	if(!g_hProps.Length)
+	if(!g_iPropsLength)
 		return;
 	
 	int iPlayerCount = GetTeamClientCount(3) + GetTeamClientCount(2);
 	
 	Messages data;
 	char sMessage[64];
-	for(int i = 0; i < g_hMessages.Length; i++)
+	for(int i = 0; i < g_iMessagesLength; i++)
 	{
 		g_hMessages.GetArray(i, data, sizeof(data));
 		
@@ -123,7 +126,7 @@ void CreateProps()
 	
 	int iEnt;
 	Props props; 
-	for(int i = 0; i < g_hProps.Length; i++)
+	for(int i = 0; i < g_iPropsLength; i++)
 	{
 		g_hProps.GetArray(i, props, sizeof(props));
 		
@@ -146,7 +149,7 @@ void CreateProps()
 void ClearProps()
 {
 	int iEnt;
-	for(int i = 0; i < g_hSpawnedProps.Length; i++)
+	for(int i = 0, iLength = g_hSpawnedProps.Length; i < iLength; i++)
 	{
 		iEnt = EntRefToEntIndex(g_hSpawnedProps.Get(i));
 		if (iEnt != INVALID_ENT_REFERENCE && IsValidEntity(iEnt))
@@ -159,6 +162,9 @@ void ClearProps()
 
 void LoadConfig()
 {
+	g_iPropsLength = 0;
+	g_iMessagesLength = 0;
+
 	g_hMessages.Clear();
 	g_hProps.Clear();
 
@@ -211,6 +217,9 @@ void LoadConfig()
 		}
 		while(kv.GotoNextKey());
 	}
+
+	g_iMessagesLength = g_hMessages.Length;
+	g_iPropsLength = g_hProps.Length;
 
 	delete kv;
 }

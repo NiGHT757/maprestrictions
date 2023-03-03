@@ -21,14 +21,9 @@ enum struct Props
 	float angles[3];
 }
 
-Handle g_hTimer;
-
 ArrayList g_hProps;
 ArrayList g_hMessages;
 ArrayList g_hSpawnedProps;
-
-ConVar mp_freezetime;
-float g_fFreezetime;
 
 char g_sModel[PLATFORM_MAX_PATH];
 
@@ -40,47 +35,34 @@ public Plugin myinfo =
 	name 			= "[FIX] AbNeR Map Restrictions",
 	author		    = "abnerfs, NiGHT",
 	description 	= "Area restrictions in maps.",
-	version 		= "2.2",
+	version 		= "2.3",
 	url 			= "https://github.com/NiGHT757/maprestrictions"
 }
 
 public void OnPluginStart()
 {
-	mp_freezetime	 = FindConVar("mp_freezetime");
-	mp_freezetime.AddChangeHook(OnSettingsChanged);
-
 	g_hProps = new ArrayList(sizeof(Props));
 	g_hMessages = new ArrayList(sizeof(Messages));
-	g_hSpawnedProps = new ArrayList(ByteCountToCells(8));
+	g_hSpawnedProps = new ArrayList();
 
-	HookEvent("round_start", EventRoundStart, EventHookMode_PostNoCopy);
+	HookEvent("round_freeze_end", Event_RoundFreezeEnd, EventHookMode_PostNoCopy);
+
 	RegAdminCmd("sm_props_refresh", cmd_reloadprops, ADMFLAG_ROOT);
 	RegAdminCmd("sm_props_reloadconfig", cmd_reloadconfig, ADMFLAG_RCON);
 }
 
-public void OnConfigsExecuted()
-{
-	g_fFreezetime = mp_freezetime.FloatValue;
-}
-
-public void OnSettingsChanged(ConVar convar, const char[] oldValue, const char[] newValue)
-{
-	g_fFreezetime = mp_freezetime.FloatValue;
-}
-
 public void OnMapStart()
 {
-	g_hTimer = null;
 	LoadConfig();
 }
 
-public void EventRoundStart(Event event, const char[] name, bool db)
+void Event_RoundFreezeEnd(Event event, const char[] name, bool db)
 {
-	delete g_hTimer;
-	g_hTimer = CreateTimer(g_fFreezetime, timer_reloadprops, _, TIMER_FLAG_NO_MAPCHANGE);
+	ClearProps();
+	CreateProps();
 }
 
-public Action cmd_reloadprops(int client, int args){
+Action cmd_reloadprops(int client, int args){
 	ReplyToCommand(client, "\x02»» \x01Props reloaded successfully");
 	ClearProps();
 	CreateProps();
@@ -88,25 +70,16 @@ public Action cmd_reloadprops(int client, int args){
 	return Plugin_Handled;
 }
 
-public Action cmd_reloadconfig(int client, int args){
+Action cmd_reloadconfig(int client, int args){
 	ReplyToCommand(client, " \x02»» \x01Config reloaded successfully");
 	LoadConfig();
 
 	return Plugin_Handled;
 }
 
-public Action timer_reloadprops(Handle timer)
-{
-	ClearProps();
-	CreateProps();
-
-	g_hTimer = null;
-	return Plugin_Continue;
-}
-
 void CreateProps()
 {
-	if(!g_iPropsLength)
+	if(!g_iPropsLength || GameRules_GetProp("m_bWarmupPeriod"))
 		return;
 	
 	int iPlayerCount = GetTeamClientCount(3) + GetTeamClientCount(2);
@@ -141,6 +114,8 @@ void CreateProps()
 			SetEntityMoveType(iEnt, MOVETYPE_PUSH);
 			
 			TeleportEntity(iEnt, props.origin, props.angles, NULL_VECTOR);
+			SetEntityRenderMode(iEnt, RENDER_TRANSALPHA);
+			SetEntityRenderColor(iEnt, 255, 255, 255, 0);
 			g_hSpawnedProps.Push(EntIndexToEntRef(iEnt));
 		}
 	}

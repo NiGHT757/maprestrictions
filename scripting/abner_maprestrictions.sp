@@ -114,8 +114,6 @@ void CreateProps()
 			SetEntityMoveType(iEnt, MOVETYPE_PUSH);
 			
 			TeleportEntity(iEnt, props.origin, props.angles, NULL_VECTOR);
-			SetEntityRenderMode(iEnt, RENDER_TRANSALPHA);
-			SetEntityRenderColor(iEnt, 255, 255, 255, 0);
 			g_hSpawnedProps.Push(EntIndexToEntRef(iEnt));
 		}
 	}
